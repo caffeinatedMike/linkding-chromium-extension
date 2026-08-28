@@ -156,6 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         li.innerHTML = '';
+        li.draggable = false;
         li.appendChild(form);
         createTagAutocomplete(form.querySelector('input[name="tags"]'), form.querySelector('.tag-input-container'));
     }
