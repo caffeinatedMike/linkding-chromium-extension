@@ -463,7 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (!tab || !tab.url || tab.url.startsWith('chrome://')) {
+            if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('brave://') || tab.url.startsWith('edge://')) {
                 showAddStatus('Cannot bookmark special browser pages.', true);
                 return;
             }
