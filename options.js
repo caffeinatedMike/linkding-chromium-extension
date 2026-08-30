@@ -15,25 +15,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const SYNC_FOLDER_TITLE = 'Linkding Bookmarks';
 
-  async function fetchAllBookmarks(url, token) {
-    let bookmarks = [];
-    let nextUrl = `${url}/api/bookmarks/?limit=100`;
-
-    while (nextUrl) {
-        const response = await fetch(nextUrl, {
-            headers: { 'Authorization': `Token ${token}` }
-        });
-
-        if (!response.ok) {
-            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-        }
-        const data = await response.json();
-        bookmarks.push(...data.results);
-        nextUrl = data.next;
-    }
-    return bookmarks;
-  }
-
   function groupBookmarksByTag(bookmarks) {
       const bookmarksByTag = {};
       bookmarks.forEach(bookmark => {
@@ -94,12 +75,14 @@ document.addEventListener('DOMContentLoaded', () => {
       }
   }
 
+  // Builds a throwaway LinkdingApi client from form values, rather than
+  // chrome.storage, since the user may be testing/saving credentials
+  // that haven't been persisted yet.
   async function testConnection(url, token) {
     try {
-      const response = await fetch(`${url}/api/`, {
-        headers: { 'Authorization': `Token ${token}` }
-      });
-      return response.ok;
+      const api = new LinkdingApi({ baseUrl: url, token });
+      await api.get('/api/');
+      return true;
     } catch (error) {
       return false;
     }
@@ -179,11 +162,12 @@ document.addEventListener('DOMContentLoaded', () => {
     syncStatusDiv.textContent = 'Syncing... Step 1/4: Fetching bookmarks...';
 
     try {
-        const { linkdingUrl, apiToken } = await chrome.storage.sync.get(['linkdingUrl', 'apiToken']);
-        if (!linkdingUrl || !apiToken) throw new Error('Linkding URL or API Token not set.');
+        // Goes through the shared Linkding facade so this sync uses the
+        // same cache that the popup/side panel read from, and forces a
+        // refresh so we always sync against current data.
+        const linkding = await createLinkding();
+        const allBookmarks = await linkding.getBookmarks({ forceRefresh: true });
 
-        const allBookmarks = await fetchAllBookmarks(linkdingUrl, apiToken);
-        
         syncStatusDiv.textContent = `Syncing... Step 2/4: Processing ${allBookmarks.length} bookmarks...`;
         const bookmarksByTag = groupBookmarksByTag(allBookmarks);
         const tagTree = buildTagTree(Object.keys(bookmarksByTag));

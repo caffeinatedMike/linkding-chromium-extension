@@ -25,12 +25,11 @@
     <div>
       <label for="api-token">API Token:</label>
       <input type="password" id="api-token" name="api-token" required>
-      <p>You can create and find your API token in your Linkding instance under <strong>Settings → Integrations</strong>.</p>
+      <p>You can create and find your API token in your Linkding instance under <strong>Settings &rarr; Integrations</strong>.</p>
     </div>
     <button type="submit">Save and Connect</button>
   </form>
   <div id="status"></div>
-  <script src="options.js"></script>
 
   <hr>
 
@@ -38,7 +37,6 @@
   <p>Create a folder on your bookmarks bar that mirrors your Linkding bookmarks. Clicking the button will remove the previous sync folder and create a new one.</p>
   <button id="sync-btn" title="This will remove any existing 'Linkding Bookmarks' folder and create a new one.">Sync to Bookmarks Bar</button>
   <div id="sync-status"></div>
-</body>
 
   <hr>
 
@@ -84,4 +82,10 @@
           <label for="side-panel-show-actions">Show Action Buttons (Edit, Delete, Drag & Drop)</label>
       </div>
   </div>
+
+  <script src="api.js"></script>
+  <script src="cache.js"></script>
+  <script src="linkding.js"></script>
+  <script src="options.js"></script>
+</body>
 </html>

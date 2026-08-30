@@ -10,9 +10,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let tagTree = {};
     let allBookmarksFlat = [];
     let allTags = [];
-    let config = {};
     let currentTag = null;
     let contextMenu = null;
+    let linkding = null;
 
     function showError(message, showOptionsLink = false) {
         loadingMessage.classList.add('hidden');
@@ -25,33 +25,12 @@ document.addEventListener('DOMContentLoaded', () => {
         errorMessage.classList.remove('hidden');
     }
 
-    // --- API Functions ---
-    async function apiRequest(endpoint, options = {}) {
-        const response = await fetch(`${config.cleanedUrl}${endpoint}`, {
-            ...options,
-            headers: {
-                'Authorization': `Token ${config.apiToken}`,
-                'Content-Type': 'application/json',
-                ...options.headers,
-            },
-        });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`API request failed: ${response.status} ${response.statusText}. ${errorText}`);
-        }
-        if (response.status === 204) return null; // No Content for DELETE
-        return response.json();
-    }
-
-    async function updateBookmark(bookmarkId, data) {
-        return apiRequest(`/api/bookmarks/${bookmarkId}/`, {
-            method: 'PUT',
-            body: JSON.stringify(data),
-        });
-    }
-
-    async function deleteBookmark(bookmarkId) {
-        return apiRequest(`/api/bookmarks/${bookmarkId}/`, { method: 'DELETE' });
+    function broadcastBookmarkChange(reason, payload) {
+        chrome.runtime.sendMessage({
+            type: 'linkding-bookmarks-changed',
+            reason,
+            ...payload,
+        }).catch(() => {});
     }
 
     // --- DOM & Rendering ---
@@ -125,8 +104,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 tag_names: formData.get('tags').split(',').map(t => t.trim()).filter(Boolean),
             };
             try {
-                const updatedBookmark = await updateBookmark(bookmark.id, updatedData);
-                await invalidatePopupCache();
+                const updatedBookmark = await linkding.updateBookmark(bookmark.id, updatedData);
+                broadcastBookmarkChange('updated', { bookmarks: [updatedBookmark] });
 
                 const index = allBookmarksFlat.findIndex(b => b.id === bookmark.id);
                 if (index !== -1) allBookmarksFlat[index] = updatedBookmark;
@@ -203,12 +182,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const updatePromises = bookmarksToUpdate.map(bookmark => {
             const updatedTags = bookmark.tag_names.map(tag => tag.startsWith(fullTag) ? newFullTag + tag.substring(fullTag.length) : tag);
-            return updateBookmark(bookmark.id, { ...bookmark, tag_names: [...new Set(updatedTags)] });
+            return linkding.updateBookmark(bookmark.id, { ...bookmark, tag_names: [...new Set(updatedTags)] });
         });
 
         try {
-            await Promise.all(updatePromises);
-            await invalidatePopupCache();
+            const updatedBookmarks = await Promise.all(updatePromises);
+            broadcastBookmarkChange('updated', { bookmarks: updatedBookmarks });
             await loadData(true);
         } catch (error) {
             alert(`An error occurred: ${error.message}`);
@@ -229,12 +208,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const updatePromises = bookmarksToUpdate.map(bookmark => {
             const updatedTags = bookmark.tag_names.filter(tag => !tag.startsWith(fullTag));
-            return updateBookmark(bookmark.id, { ...bookmark, tag_names: updatedTags });
+            return linkding.updateBookmark(bookmark.id, { ...bookmark, tag_names: updatedTags });
         });
 
         try {
-            await Promise.all(updatePromises);
-            await invalidatePopupCache();
+            const updatedBookmarks = await Promise.all(updatePromises);
+            broadcastBookmarkChange('updated', { bookmarks: updatedBookmarks });
             await loadData(true);
         } catch (error) {
             alert(`An error occurred: ${error.message}`);
@@ -263,8 +242,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const updatedData = { ...bookmark, tag_names: [...new Set(newTags)] };
 
         try {
-            const updatedBookmark = await updateBookmark(bookmark.id, updatedData);
-            await invalidatePopupCache();
+            const updatedBookmark = await linkding.updateBookmark(bookmark.id, updatedData);
+            broadcastBookmarkChange('updated', { bookmarks: [updatedBookmark] });
 
             const index = allBookmarksFlat.findIndex(b => b.id === bookmark.id);
             if (index !== -1) allBookmarksFlat[index] = updatedBookmark;
@@ -321,8 +300,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 removeBtn.addEventListener('click', async () => {
                     const updatedTags = bookmark.tag_names.filter(t => t !== tagName);
                     try {
-                        const updatedBookmark = await updateBookmark(bookmark.id, { ...bookmark, tag_names: updatedTags });
-                        await invalidatePopupCache();
+                        const updatedBookmark = await linkding.updateBookmark(bookmark.id, { ...bookmark, tag_names: updatedTags });
+                        broadcastBookmarkChange('updated', { bookmarks: [updatedBookmark] });
 
                         const index = allBookmarksFlat.findIndex(b => b.id === bookmark.id);
                         if (index !== -1) allBookmarksFlat[index] = updatedBookmark;
@@ -357,8 +336,8 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteBtn.addEventListener('click', async () => {
             if (confirm(`Are you sure you want to delete "${title}"?`)) {
                 try {
-                    await deleteBookmark(bookmark.id);
-                    await invalidatePopupCache();
+                    await linkding.deleteBookmark(bookmark.id);
+                    broadcastBookmarkChange('deleted', { bookmarkIds: [bookmark.id] });
                     allBookmarksFlat = allBookmarksFlat.filter(b => b.id !== bookmark.id);
                     allBookmarksByTag = groupBookmarksByTag(allBookmarksFlat);
                     allTags = [...new Set(allBookmarksFlat.flatMap(b => b.tag_names))].sort();
@@ -380,7 +359,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         li.addEventListener('dragend', () => li.classList.remove('dragging'));
 
-
         actionsDiv.appendChild(editBtn);
         actionsDiv.appendChild(deleteBtn);
         li.appendChild(infoDiv);
@@ -388,11 +366,6 @@ document.addEventListener('DOMContentLoaded', () => {
         li.appendChild(actionsDiv);
 
         return li;
-    }
-
-    // --- Cache Invalidation ---
-    async function invalidatePopupCache() {
-        await chrome.storage.local.remove(['cachedBookmarks', 'cacheTimestamp']);
     }
 
     function reRenderUI() {
@@ -577,25 +550,6 @@ document.addEventListener('DOMContentLoaded', () => {
         renderFolderTree(tagTree, folderListContainer);
     }
 
-    async function fetchAllBookmarks(url, token) {
-        let bookmarks = [];
-        let nextUrl = `${url}/api/bookmarks/?limit=100`;
-
-        while (nextUrl) {
-            const response = await fetch(nextUrl, {
-                headers: { 'Authorization': `Token ${token}` }
-            });
-
-            if (!response.ok) {
-                throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-            }
-            const data = await response.json();
-            bookmarks.push(...data.results);
-            nextUrl = data.next;
-        }
-        return bookmarks;
-    }
-
     function groupBookmarksByTag(bookmarks) {
         const bookmarksByTag = {};
         bookmarks.forEach(bookmark => {
@@ -644,19 +598,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const settings = await chrome.storage.sync.get(['linkdingUrl', 'apiToken']);
-            if (!settings.linkdingUrl || !settings.apiToken) {
-                showError('Linkding URL or API Token not set. Please configure the extension options.', true);
-                return;
-            }
-
-            config = {
-                linkdingUrl: settings.linkdingUrl,
-                apiToken: settings.apiToken,
-                cleanedUrl: settings.linkdingUrl.trim().replace(/\/$/, '')
-            };
-
-            allBookmarksFlat = await fetchAllBookmarks(config.cleanedUrl, config.apiToken);
+            linkding = await createLinkding();
+            allBookmarksFlat = await linkding.getBookmarks({ forceRefresh });
             allBookmarksByTag = groupBookmarksByTag(allBookmarksFlat);
             allTags = [...new Set(allBookmarksFlat.flatMap(b => b.tag_names))].sort();
 
@@ -685,7 +628,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             console.error('Error fetching bookmarks:', error);
-            showError(`Failed to load bookmarks. Error: ${error.message}`);
+            const isConfigurationError =
+                error.message.includes('Linkding URL') ||
+                error.message.includes('API token') ||
+                error.message.includes('API Token');
+
+            showError(
+                `Failed to load bookmarks. Error: ${error.message}`,
+                isConfigurationError
+            );
         } finally {
             // On initial load, this hides the loading message. On refresh, this does nothing.
             loadingMessage.classList.add('hidden');

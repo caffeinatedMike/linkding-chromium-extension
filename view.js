@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let allBookmarksByTag = {};
     let allTags = [];
     let config = {};
+    let linkding = null;
 
     function showError(message, showOptionsLink = false) {
         loadingMessage.classList.add('hidden');
@@ -29,48 +30,8 @@ document.addEventListener('DOMContentLoaded', () => {
         errorMessage.classList.remove('hidden');
     }
 
-    // --- API Functions ---
-    async function apiRequest(endpoint, options = {}) {
-        const response = await fetch(`${config.cleanedUrl}${endpoint}`, {
-            ...options,
-            headers: {
-                'Authorization': `Token ${config.apiToken}`,
-                'Content-Type': 'application/json',
-                ...options.headers,
-            },
-        });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`API request failed: ${response.status} ${response.statusText}. ${errorText}`);
-        }
-        if (response.status === 204) return null; // No Content for DELETE
-        return response.json();
-    }
-
-    async function updateBookmark(bookmarkId, data) {
-        return apiRequest(`/api/bookmarks/${bookmarkId}/`, {
-            method: 'PUT',
-            body: JSON.stringify(data),
-        });
-    }
-
-    async function deleteBookmark(bookmarkId) {
-        return apiRequest(`/api/bookmarks/${bookmarkId}/`, { method: 'DELETE' });
-    }
-
-    async function createBookmark(data) {
-        return apiRequest(`/api/bookmarks/`, {
-            method: 'POST',
-            body: JSON.stringify(data),
-        });
-    }
-
-    // --- Update & Sync Logic ---
-    async function invalidatePopupCache() {
-        await chrome.storage.local.remove(['cachedBookmarks', 'cacheTimestamp']);
-    }
-
     // --- DOM & Rendering ---
+
     function escapeHTML(str) {
         if (str === null || str === undefined) return '';
         const p = document.createElement('p');
@@ -139,12 +100,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 description: formData.get('description'),
                 tag_names: formData.get('tags').split(',').map(t => t.trim()).filter(Boolean),
             };
+
             try {
-                const updatedBookmark = await updateBookmark(bookmark.id, updatedData);
+                const updatedBookmark = await linkding.updateBookmark(bookmark.id, updatedData);
                 const index = allBookmarksFlat.findIndex(b => b.id === bookmark.id);
                 if (index !== -1) allBookmarksFlat[index] = updatedBookmark;
                 reRenderUI();
-                await invalidatePopupCache();
             } catch (error) {
                 alert(`An error occurred: ${error.message}`);
             }
@@ -158,7 +119,10 @@ document.addEventListener('DOMContentLoaded', () => {
         li.innerHTML = '';
         li.draggable = false;
         li.appendChild(form);
-        createTagAutocomplete(form.querySelector('input[name="tags"]'), form.querySelector('.tag-input-container'));
+        createTagAutocomplete(
+            form.querySelector('input[name="tags"]'),
+            form.querySelector('.tag-input-container')
+        );
     }
 
     function createBookmarkElement(bookmark, sourceTag) {
@@ -175,16 +139,20 @@ document.addEventListener('DOMContentLoaded', () => {
         a.href = bookmark.url;
         a.target = '_blank';
 
-        const title = bookmark.title || bookmark.website_title || 'No Title';
+        const title =
+            bookmark.title ||
+            bookmark.website_title ||
+            'No Title';
+
         a.textContent = title;
 
         let tooltip = `${title}\n${bookmark.url}`;
         if (bookmark.description) {
             tooltip += `\n\n---\n${bookmark.description}`;
         }
+
         a.title = tooltip;
         infoDiv.appendChild(a);
-
         contentDiv.appendChild(infoDiv);
 
         if (config.showTags) {
@@ -202,13 +170,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         removeBtn.innerHTML = '&times;';
                         removeBtn.title = `Remove tag: ${tagName}`;
                         removeBtn.addEventListener('click', async () => {
-                            const updatedTags = bookmark.tag_names.filter(t => t !== tagName);
+                            const updatedTags = bookmark.tag_names.filter(
+                                t => t !== tagName
+                            );
                             try {
-                                const updatedBookmark = await updateBookmark(bookmark.id, { ...bookmark, tag_names: updatedTags });
+                                const updatedBookmark = await linkding.updateBookmark(
+                                    bookmark.id, {...bookmark, tag_names: updatedTags}
+                                );
                                 const index = allBookmarksFlat.findIndex(b => b.id === bookmark.id);
                                 if (index !== -1) allBookmarksFlat[index] = updatedBookmark;
                                 reRenderUI();
-                                await invalidatePopupCache();
                             } catch (error) {
                                 alert(`An error occurred: ${error.message}`);
                             }
@@ -243,10 +214,9 @@ document.addEventListener('DOMContentLoaded', () => {
             deleteBtn.addEventListener('click', async () => {
                 if (confirm(`Are you sure you want to delete "${title}"?`)) {
                     try {
-                        await deleteBookmark(bookmark.id);
+                        await linkding.deleteBookmark(bookmark.id);
                         allBookmarksFlat = allBookmarksFlat.filter(b => b.id !== bookmark.id);
                         reRenderUI();
-                        await invalidatePopupCache();
                     } catch (error) {
                         alert(`An error occurred: ${error.message}`);
                     }
@@ -301,8 +271,15 @@ document.addEventListener('DOMContentLoaded', () => {
         return tree;
     }
 
-    function renderFolderTree(node, container, bookmarksByTag, path = []) {
-        const sortedKeys = Object.keys(node).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    function renderFolderTree(
+        node,
+        container,
+        bookmarksByTag,
+        path = []
+    ) {
+        const sortedKeys = Object.keys(node).sort(
+            (a, b) => a.toLowerCase().localeCompare(b.toLowerCase())
+        );
 
         for (const key of sortedKeys) {
             const currentPath = [...path, key];
@@ -334,7 +311,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     const bookmarkId = payload.id;
                     const sourceTag = payload.sourceTag;
                     const targetTag = folderItem.dataset.tag;
-
                     if (!targetTag || sourceTag === targetTag) {
                         return; // Don't drop on itself or invalid target
                     }
@@ -347,11 +323,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         newTags.push(targetTag);
                     }
 
-                    const updatedBookmark = await updateBookmark(bookmarkId, { ...bookmarkToMove, tag_names: newTags });
-                    const index = allBookmarksFlat.findIndex(b => b.id === bookmarkId);
-                    if (index !== -1) allBookmarksFlat[index] = updatedBookmark;
-                    reRenderUI();
-                    await invalidatePopupCache();
+                    try {
+                        const updatedBookmark = await linkding.updateBookmark(
+                            bookmarkId, { ...bookmarkToMove, tag_names: newTags }
+                        );
+                        const index = allBookmarksFlat.findIndex(b => b.id === bookmarkId);
+                        if (index !== -1) allBookmarksFlat[index] = updatedBookmark;
+                        reRenderUI();
+                    } catch (error) {
+                        alert(`An error occurred: ${error.message}`);
+                    }
                 });
             }
 
@@ -373,7 +354,12 @@ document.addEventListener('DOMContentLoaded', () => {
             childrenContainer.className = 'folder-children';
 
             if (hasChildren) {
-                renderFolderTree(tagNode.__children, childrenContainer, bookmarksByTag, currentPath);
+                renderFolderTree(
+                    tagNode.__children,
+                    childrenContainer,
+                    bookmarksByTag,
+                    currentPath
+                );
             }
 
             if (tagNode.__isTag) {
@@ -390,25 +376,6 @@ document.addEventListener('DOMContentLoaded', () => {
             folderLabel.addEventListener('click', () => folderItem.classList.toggle('open'));
             container.appendChild(folderItem);
         }
-    }
-
-    async function fetchAllBookmarks(url, token) {
-        let bookmarks = [];
-        let nextUrl = `${url}/api/bookmarks/?limit=100`;
-
-        while (nextUrl) {
-            const response = await fetch(nextUrl, {
-                headers: { 'Authorization': `Token ${token}` }
-            });
-
-            if (!response.ok) {
-                throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-            }
-            const data = await response.json();
-            bookmarks.push(...data.results);
-            nextUrl = data.next;
-        }
-        return bookmarks;
     }
 
     function groupBookmarksByTag(bookmarks) {
@@ -488,26 +455,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 3000);
     }
 
+    // Bookmark Operations
+
     async function addCurrentTab() {
         addTabBtn.disabled = true;
         refreshBtn.disabled = true;
-        try {
-            if (!config.linkdingUrl || !config.apiToken) {
-                showError('Cannot add bookmark. Please configure the extension first.', true);
-                return;
-            }
 
+        try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             if (!tab || !tab.url || tab.url.startsWith('chrome://')) {
                 showAddStatus('Cannot bookmark special browser pages.', true);
                 return;
             }
 
-            const newBookmark = await createBookmark({ url: tab.url, title: tab.title });
+            const newBookmark = await linkding.createBookmark({ url: tab.url,title: tab.title });
 
             allBookmarksFlat.push(newBookmark);
             reRenderUI();
-            await invalidatePopupCache();
 
             showAddStatus('Bookmark added successfully!');
         } catch (error) {
@@ -517,6 +481,8 @@ document.addEventListener('DOMContentLoaded', () => {
             refreshBtn.disabled = false;
         }
     }
+
+    // Data Loading
 
     async function loadData(isForcedRefresh = false) {
         loadingMessage.classList.remove('hidden');
@@ -528,47 +494,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const isSidePanel = window.location.pathname.includes('side_panel.html');
-
             const settings = await chrome.storage.sync.get({
-                linkdingUrl: '',
-                apiToken: '',
                 showTags: true,
                 showActions: true,
                 sidePanelShowTags: true,
                 sidePanelShowActions: true
             });
-            if (!settings.linkdingUrl || !settings.apiToken) {
-                showError('Linkding URL or API Token not set.', true);
-                return;
-            }
-
             config = {
-                linkdingUrl: settings.linkdingUrl,
-                apiToken: settings.apiToken,
-                cleanedUrl: settings.linkdingUrl.trim().replace(/\/$/, ''),
                 showTags: isSidePanel ? settings.sidePanelShowTags : settings.showTags,
                 showActions: isSidePanel ? settings.sidePanelShowActions : settings.showActions
             };
-
-            const CACHE_DURATION_MINUTES = 15;
-            const cache = await chrome.storage.local.get(['cachedBookmarks', 'cacheTimestamp']);
-            const now = new Date().getTime();
-            const isCacheValid = cache.cachedBookmarks && cache.cacheTimestamp && (now - cache.cacheTimestamp < CACHE_DURATION_MINUTES * 60 * 1000);
-
-            if (isForcedRefresh || !isCacheValid) {
-                allBookmarksFlat = await fetchAllBookmarks(config.cleanedUrl, config.apiToken);
-                await chrome.storage.local.set({
-                    cachedBookmarks: allBookmarksFlat,
-                    cacheTimestamp: new Date().getTime()
-                });
-            } else {
-                allBookmarksFlat = cache.cachedBookmarks;
-            }
-
+            linkding = await createLinkding();
+            allBookmarksFlat = await linkding.getBookmarks({ isForcedRefresh });
             reRenderUI();
         } catch (error) {
             console.error('Error fetching bookmarks:', error);
-            showError(`Failed to load bookmarks. Error: ${error.message}`);
+            const isConfigurationError =
+                error.message.includes('Linkding URL') ||
+                error.message.includes('API token') ||
+                error.message.includes('API Token');
+
+            showError(
+                `Failed to load bookmarks. Error: ${error.message}`,
+                isConfigurationError
+            );
         } finally {
             loadingMessage.classList.add('hidden');
             if (isForcedRefresh) {
@@ -586,8 +535,10 @@ document.addEventListener('DOMContentLoaded', () => {
             chrome.tabs.create({ url: 'manager.html' });
         });
 
-        chrome.storage.onChanged.addListener((changes, namespace) => {
-            if (namespace === 'sync') {
+        chrome.storage.onChanged.addListener(
+            (changes, namespace) => {
+                if (namespace !== 'sync') return;
+
                 const uiKeys = ['showTags', 'showActions', 'sidePanelShowTags', 'sidePanelShowActions'];
                 const changedKeys = Object.keys(changes);
                 const hasUiChange = changedKeys.some(key => uiKeys.includes(key));
@@ -597,9 +548,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     loadData(true);
                 }
             }
+        );
+
+        chrome.runtime.onMessage.addListener((message) => {
+            if (message?.type !== 'linkding-bookmarks-changed') return;
+            if (message.reason === 'created' || message.reason === 'updated') {
+                message.bookmarks.forEach(bookmark => {
+                    const index = allBookmarksFlat.findIndex(b => b.id === bookmark.id);
+                    if (index !== -1) {
+                        allBookmarksFlat[index] = bookmark;
+                    } else {
+                        allBookmarksFlat.push(bookmark);
+                    }
+                });
+                reRenderUI();
+            } else if (message.reason === 'deleted') {
+                const idsToRemove = new Set(message.bookmarkIds);
+                allBookmarksFlat = allBookmarksFlat.filter(b => !idsToRemove.has(b.id));
+                reRenderUI();
+            }
         });
 
         await loadData(false);
     }
+
     init();
 });
