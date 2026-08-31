@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Linkding Bookmarks",
   "version": "1.0.0",
+  "author": "@caffeinatedMike on GitHub",
   "description": "A dropdown for your Linkding bookmarks, sorted by tags.",
   "permissions": [
     "storage",
@@ -29,7 +30,7 @@
     "128": "icons/favicon128.png"
   },
   "options_page": "options.html",
-  "author": "TheeOx with the help of Gemini Code Assist",
+
   "background": {
     "service_worker": "background.js"
   },

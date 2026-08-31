@@ -172,6 +172,40 @@ class LinkdingApi {
             `/api/tags/${query ? `?${query}` : ''}`
         );
     }
+
+    getBookmarkAssets(bookmarkId, params = {}) {
+        const query = new URLSearchParams(params).toString();
+
+        return this.get(
+            `/api/bookmarks/${bookmarkId}/assets/${query ? `?${query}` : ''}`
+        );
+    }
+
+    getBookmarkAsset(bookmarkId, assetId) {
+        return this.get(`/api/bookmarks/${bookmarkId}/assets/${assetId}/`);
+    }
+
+    uploadBookmarkAsset(bookmarkId, file, filename) {
+        const formData = new FormData();
+        const name = filename || file.name;
+
+        if (!name) {
+            throw new Error(
+                'A filename is required to upload a bookmark asset.'
+            );
+        }
+
+        formData.append('file', file, name);
+
+        return this.request(`/api/bookmarks/${bookmarkId}/assets/upload/`, {
+            method: 'POST',
+            body: formData,
+        });
+    }
+
+    deleteBookmarkAsset(bookmarkId, assetId) {
+        return this.delete(`/api/bookmarks/${bookmarkId}/assets/${assetId}/`);
+    }
 }
 
 async function createLinkdingApi() {

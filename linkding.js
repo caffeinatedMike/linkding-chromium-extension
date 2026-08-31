@@ -44,6 +44,23 @@ class Linkding {
     getTags(params = {}) {
         return this.api.getTags(params);
     }
+
+    getBookmarkAssets(bookmarkId, params = {}) {
+        return this.api.getBookmarkAssets(bookmarkId, params);
+    }
+
+    /**
+     * Uploads a file (e.g. a screenshot) as an asset attached to an
+     * existing bookmark. This does not touch the bookmark cache, since
+     * assets aren't part of the cached bookmark list payload.
+     */
+    uploadBookmarkAsset(bookmarkId, file, filename) {
+        return this.api.uploadBookmarkAsset(bookmarkId, file, filename);
+    }
+
+    deleteBookmarkAsset(bookmarkId, assetId) {
+        return this.api.deleteBookmarkAsset(bookmarkId, assetId);
+    }
 }
 
 async function createLinkding() {
