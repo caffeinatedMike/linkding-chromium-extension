@@ -140,14 +140,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function handleAddFolder(parentTag) {
-        const newFolderName = prompt(`Enter new folder name inside "${parentTag}":`);
+        const isUntagged = parentTag === '[Untagged]';
+        const promptText = isUntagged ?
+            'Enter name for new top-level folder:' :
+            `Enter name for new subfolder inside "${parentTag}":`;
+        const newFolderName = prompt(promptText);
         if (!newFolderName || !newFolderName.trim()) return;
         if (newFolderName.includes('.')) {
             alert('Folder names cannot contain periods.');
             return;
         }
 
-        const newTagName = parentTag === '[Untagged]' ? newFolderName.trim() : `${parentTag}.${newFolderName.trim()}`;
+        const newTagName = isUntagged ? newFolderName.trim() : `${parentTag}.${newFolderName.trim()}`;
 
         if (allBookmarksByTag[newTagName]) {
             alert(`Folder "${newTagName}" already exists.`);
@@ -498,8 +502,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isUntagged = potentialTagName === '[Untagged]';
 
                 contextMenu.innerHTML = `
-                    <div class="context-menu-item" data-action="add">New Sub-folder...</div>
-                    <div class="context-menu-item ${isUntagged ? 'disabled' : ''}" data-action="rename">Rename...</div>
+                    <div class="context-menu-item" data-action="add">New ${isUntagged ? 'Top-level folder' : 'Sub-folder'}</div>
+                    <div class="context-menu-item ${isUntagged ? 'disabled' : ''}" data-action="rename">Rename</div>
                     <div class="context-menu-item ${isUntagged ? 'disabled' : ''}" data-action="remove">Remove</div>
                 `;
 
