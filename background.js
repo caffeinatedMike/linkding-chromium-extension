@@ -1,28 +1,12 @@
-importScripts(
-    'api.js',
-    'cache.js',
-    'linkding.js',
-);
-
-function setActionForMode(mode) {
-    if (mode === 'sidebar') {
-        // Open side panel on click, disable popup
-        chrome.action.setPopup({ popup: '' }); // An empty string disables the popup
-        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
-            .catch((error) => console.error(error));
-    } else { // default to 'popup'
-        // Open popup on click, disable side panel direct open
-        chrome.action.setPopup({ popup: 'popup.html' });
-        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false })
-            .catch((error) => console.error(error));
-    }
+async function configureSidePanel() {
+    await chrome.sidePanel.setPanelBehavior({
+        openPanelOnActionClick: true,
+    });
 }
 
-// Set the initial action on install/startup
+// Configure the side panel when the extension is installed.
 chrome.runtime.onInstalled.addListener(() => {
-    chrome.storage.sync.get('displayMode', (data) => {
-        setActionForMode(data.displayMode || 'popup');
-    });
+    configureSidePanel();
 
     // Add a context menu item to always have access to the manager
     chrome.contextMenus.create({
@@ -44,16 +28,47 @@ chrome.runtime.onInstalled.addListener(() => {
         title: 'Bookmark this page in Linkding',
         contexts: ['page']
     });
-
-    // TODO: bookmark-clipboard
 });
 
-// Listen for changes in storage to update the action on the fly
-chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'sync' && changes.displayMode) {
-        setActionForMode(changes.displayMode.newValue);
+// Configure the side panel when the service worker starts.
+chrome.runtime.onStartup.addListener(() => {
+    configureSidePanel();
+});
+
+/**
+ * Open the side panel and pass it a pending bookmark request.
+ *
+ * IMPORTANT:
+ * chrome.sidePanel.open() must be called while the context-menu
+ * user gesture is still active. Therefore it MUST happen before
+ * the asynchronous storage operation below.
+ */
+async function openAddFormInSidePanel(url, title, tabId) {
+    try {
+        // This must be the first async operation.
+        await chrome.sidePanel.open({ tabId });
+
+        await chrome.storage.session.set({
+            pendingAddLink: {
+                tabId,
+                url,
+                title: title || '',
+                ts: Date.now(),
+            },
+        });
+    } catch (error) {
+        console.error(
+            'Could not open the Linkding side panel:',
+            error
+        );
+        chrome.notifications.create({
+            type: 'basic',
+            iconUrl: 'icons/favicon128.png',
+            title: 'Linkding',
+            message: 'Click the Linkding icon to finish adding this bookmark.',
+        });
     }
-});
+}
 
 // Listener for the context menu
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -62,47 +77,23 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         return;
     }
 
-    let bookmark;
-    switch (info.menuItemId){
-        case 'bookmark-link':
-            if (!info.linkUrl) return;
-            bookmark = { url: info.linkUrl, title: info.selectionText };
-            break;
-        case 'bookmark-page':
-            if (!tab?.url) return;
-            bookmark = { url: tab.url, title: tab.title };
-            break;
-        case 'bookmark-clipboard':
-            // TODO
-            return;
-        default:
-            return;
-    }
+    if (!tab?.id) return;
 
-    try {
-        const linkding = await createLinkding();
-        const createdBookmark = await linkding.createBookmark(bookmark);
-        chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'icons/favicon128.png',
-            title: 'Linkding Bookmark Saved',
-            message: `Successfully bookmarked: ${bookmark.url}`,
-        });
-        // Broadcast message to any subscribed frontend component
-        // that the bookmarks cache has been invalidated and the
-        // UI needs to be updated immediately
-        chrome.runtime.sendMessage({
-            type: 'linkding-bookmarks-changed',
-            reason: 'created',
-            bookmarks: [createdBookmark],
-        }).catch(() => {});
-    } catch (error) {
-        chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'icons/favicon128.png',
-            title: 'Linkding Bookmark Failed',
-            message: `Could not save bookmark. Error: ${error.message}`,
-        });
-        console.error('Failed to bookmark link:', error);
+    if (info.menuItemId === 'bookmark-link') {
+        if (!info.linkUrl) return;
+
+        await openAddFormInSidePanel(
+            info.linkUrl,
+            info.selectionText || tab.title || info.linkUrl,
+            tab.id
+        );
+    } else if (info.menuItemId === 'bookmark-page') {
+        if (!tab?.url) return;
+
+        await openAddFormInSidePanel(
+            tab.url,
+            tab.title,
+            tab.id
+        );
     }
 });

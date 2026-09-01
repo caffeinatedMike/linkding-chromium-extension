@@ -5,11 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusDiv = document.getElementById('status');
   const syncBtn = document.getElementById('sync-btn');
   const syncStatusDiv = document.getElementById('sync-status');
-  const displayModeRadios = document.querySelectorAll('input[name="display-mode"]');
   const showTagsCheckbox = document.getElementById('show-tags');
   const showActionsCheckbox = document.getElementById('show-actions');
-  const sidePanelShowTagsCheckbox = document.getElementById('side-panel-show-tags');
-  const sidePanelShowActionsCheckbox = document.getElementById('side-panel-show-actions');
 
   // --- Bookmarks Sync Logic ---
 
@@ -117,43 +114,24 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function saveSidePanelUiSettings() {
-    chrome.storage.sync.set({
-      sidePanelShowTags: sidePanelShowTagsCheckbox.checked,
-      sidePanelShowActions: sidePanelShowActionsCheckbox.checked,
-    });
-  }
-
   async function restoreOptions() {
     const {
       linkdingUrl,
       apiToken,
-      displayMode = 'popup',
       showTags = true,
       showActions = true,
-      sidePanelShowTags = true,
-      sidePanelShowActions = true
     } = await chrome.storage.sync.get({
       linkdingUrl: '',
       apiToken: '',
-      displayMode: 'popup',
       showTags: true,
       showActions: true,
-      sidePanelShowTags: true,
-      sidePanelShowActions: true,
     });
 
     if (linkdingUrl) linkdingUrlInput.value = linkdingUrl;
     if (apiToken) apiTokenInput.value = apiToken;
 
-    const selectedRadio = document.querySelector(`input[name="display-mode"][value="${displayMode}"]`);
-    if (selectedRadio) selectedRadio.checked = true;
-
     showTagsCheckbox.checked = showTags;
     showActionsCheckbox.checked = showActions;
-
-    sidePanelShowTagsCheckbox.checked = sidePanelShowTags;
-    sidePanelShowActionsCheckbox.checked = sidePanelShowActions;
   }
 
   async function syncToBookmarksBar() {
@@ -192,15 +170,8 @@ document.addEventListener('DOMContentLoaded', () => {
   form.addEventListener('submit', saveOptions);
   syncBtn.addEventListener('click', syncToBookmarksBar);
 
-  displayModeRadios.forEach(radio => {
-    radio.addEventListener('change', (e) => chrome.storage.sync.set({ displayMode: e.target.value }));
-  });
-
   showTagsCheckbox.addEventListener('change', saveUiSettings);
   showActionsCheckbox.addEventListener('change', saveUiSettings);
-
-  sidePanelShowTagsCheckbox.addEventListener('change', saveSidePanelUiSettings);
-  sidePanelShowActionsCheckbox.addEventListener('change', saveSidePanelUiSettings);
 
   restoreOptions();
 });

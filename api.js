@@ -153,6 +153,11 @@ class LinkdingApi {
         return this.get(`/api/bookmarks/${id}/`);
     }
 
+    checkBookmark(url) {
+        const query = new URLSearchParams({ url }).toString();
+        return this.get(`/api/bookmarks/check/?${query}`);
+    }
+
     createBookmark(data) {
         return this.post('/api/bookmarks/', data);
     }

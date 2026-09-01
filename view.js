@@ -457,10 +457,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Bookmark Operations
 
-    async function addCurrentTab() {
-        addTabBtn.disabled = true;
-        refreshBtn.disabled = true;
+    const bookmarkFormRoot = document.getElementById('bookmark-form-root');
 
+    function applySavedBookmark(bookmark) {
+        const index = allBookmarksFlat.findIndex(b => b.id === bookmark.id);
+        if (index !== -1) {
+            allBookmarksFlat[index] = bookmark;
+        } else {
+            allBookmarksFlat.push(bookmark);
+        }
+        reRenderUI();
+    }
+
+    async function openAddCurrentTabForm() {
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('brave://') || tab.url.startsWith('edge://')) {
@@ -468,19 +477,68 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            const newBookmark = await linkding.createBookmark({ url: tab.url,title: tab.title });
+            if (isSidePanelView) {
+                // The side panel has no toolbar popup of its own — hand
+                // off to background so the form opens under the
+                // extension icon instead of showing inline here.
+                await chrome.runtime.sendMessage({
+                    type: 'linkding-open-add-form',
+                    url: tab.url,
+                    title: tab.title,
+                });
+                return;
+            }
 
-            allBookmarksFlat.push(newBookmark);
-            reRenderUI();
-
-            showAddStatus('Bookmark added successfully!');
+            BookmarkForm.open({
+                container: bookmarkFormRoot,
+                url: tab.url,
+                title: tab.title,
+                linkding,
+                allTags,
+                onSaved: (bookmark, mode) => {
+                    applySavedBookmark(bookmark);
+                    showAddStatus(mode === 'created' ? 'Bookmark added successfully!' : 'Bookmark updated successfully!');
+                },
+            });
         } catch (error) {
             showAddStatus(`Error: ${error.message}`, true);
-        } finally {
-            addTabBtn.disabled = false;
-            refreshBtn.disabled = false;
         }
     }
+
+    // How long a pending "open the add form" request (see background.js)
+    // stays valid. Generous, since if we can't force the popup open
+    // immediately, the fallback is simply "show the form the next time
+    // the popup opens for any reason" — the user may take a moment to
+    // click the icon themselves.
+    const PENDING_ADD_LINK_TTL_MS = 5 * 60 * 1000;
+
+    async function openPendingAddFormIfAny() {
+        if (isSidePanelView) return;
+
+        try {
+            const { pendingAddLink } = await chrome.storage.session.get('pendingAddLink');
+            if (!pendingAddLink) return;
+
+            await chrome.storage.session.remove('pendingAddLink');
+            if (Date.now() - pendingAddLink.ts > PENDING_ADD_LINK_TTL_MS) return;
+
+            linkding = linkding || await createLinkding();
+
+            BookmarkForm.open({
+                container: bookmarkFormRoot,
+                url: pendingAddLink.url,
+                title: pendingAddLink.title,
+                linkding,
+                allTags,
+                onSaved: (bookmark, mode) => {
+                    applySavedBookmark(bookmark);
+                    showAddStatus(mode === 'created' ? 'Bookmark added successfully!' : 'Bookmark updated successfully!');
+                },
+            });
+        } catch (error) {
+            console.warn('Could not check for a pending add-link request:', error.message);
+         }
+     }
 
     // Data Loading
 
@@ -493,19 +551,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const isSidePanel = window.location.pathname.includes('side_panel.html');
             const settings = await chrome.storage.sync.get({
                 showTags: true,
                 showActions: true,
-                sidePanelShowTags: true,
-                sidePanelShowActions: true
             });
             config = {
-                showTags: isSidePanel ? settings.sidePanelShowTags : settings.showTags,
-                showActions: isSidePanel ? settings.sidePanelShowActions : settings.showActions
+                showTags: settings.showTags,
+                showActions: settings.showActions,
             };
-            linkding = await createLinkding();
-            allBookmarksFlat = await linkding.getBookmarks({ isForcedRefresh });
+            linkding = linkding || await createLinkding();
+            allBookmarksFlat = await linkding.getBookmarks({ forceRefresh: isForcedRefresh });
             reRenderUI();
         } catch (error) {
             console.error('Error fetching bookmarks:', error);
@@ -529,7 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Main logic to initialize the popup
     async function init() {
         searchBox.addEventListener('input', (e) => filterAndRender(e.target.value));
-        addTabBtn.addEventListener('click', addCurrentTab);
+        addTabBtn.addEventListener('click', openAddCurrentTabForm);
         refreshBtn.addEventListener('click', () => loadData(true));
         openManagerBtn.addEventListener('click', () => {
             chrome.tabs.create({ url: 'manager.html' });
@@ -569,6 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        await openPendingAddFormIfAny();
         await loadData(false);
     }
 

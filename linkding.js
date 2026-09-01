@@ -23,6 +23,10 @@ class Linkding {
         return this.api.getBookmark(id);
     }
 
+    checkBookmark(url) {
+        return this.api.checkBookmark(url);
+    }
+
     async createBookmark(data) {
         const bookmark = await this.api.createBookmark(data);
         await this.bookmarkCache.invalidate();

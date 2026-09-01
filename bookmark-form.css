@@ -1,0 +1,222 @@
+.bookmark-form-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+
+  background: var(--bg-color);
+  color: var(--text-color);
+
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.bookmark-form-dialog {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: 100%;
+
+  background-color: var(--bg-color);
+  color: var(--text-color);
+
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+
+  padding: 14px;
+  box-sizing: border-box;
+
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/*
+ * Keep the form itself compact enough to fit inside the expanded
+ * popup without introducing a scrollbar.
+ */
+.bookmark-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.bookmark-form-header h2 {
+  margin: 0;
+  font-size: 1.05em;
+}
+
+.bookmark-form-close {
+  background: none;
+  border: none;
+  color: var(--text-color);
+  font-size: 1.3em;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.bookmark-form-close:hover {
+  background-color: var(--button-hover-bg);
+}
+
+.bookmark-form-hint {
+  font-size: 0.85em;
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  background-color: var(--folder-bg);
+}
+
+.bookmark-form-hint.text-warning {
+  background-color: var(--status-error-bg);
+  color: var(--status-error-color);
+}
+
+.bookmark-form-hint.text-success {
+  background-color: var(--status-bg);
+  color: var(--status-color);
+}
+
+.bookmark-form-field {
+  margin-bottom: 8px;
+}
+
+.bookmark-form-field label {
+  display: block;
+  margin-bottom: 3px;
+  font-weight: bold;
+  font-size: 0.9em;
+}
+
+.bookmark-form-field input[type="text"],
+.bookmark-form-field textarea {
+  width: 100%;
+  padding: 7px;
+  box-sizing: border-box;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  font-family: inherit;
+  font-size: 1em;
+}
+
+.bookmark-form-field textarea {
+  field-sizing: content;
+  min-height: 3lh;
+  max-height: 10lh;
+  resize: vertical;
+}
+
+.bookmark-form-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: normal;
+  cursor: pointer;
+}
+
+.bookmark-form-checkbox input {
+  margin: 0;
+}
+
+.has-icon-right {
+  position: relative;
+}
+
+.bf-spinner {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--input-border);
+  border-top-color: var(--link-color);
+  border-radius: 50%;
+  animation: bf-spin 0.7s linear infinite;
+}
+
+@keyframes bf-spin {
+  to {
+    transform: translateY(-50%) rotate(360deg);
+  }
+}
+
+.bookmark-form-error {
+  background-color: var(--status-error-bg);
+  color: var(--status-error-color);
+  border: 1px solid var(--status-error-border, var(--status-error-color));
+  border-radius: 4px;
+  padding: 7px;
+  font-size: 0.9em;
+  margin-bottom: 8px;
+}
+
+.bookmark-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.bookmark-form-actions button {
+  padding: 7px 14px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  cursor: pointer;
+  background-color: var(--folder-bg);
+  color: var(--text-color);
+  font-size: 0.95em;
+}
+
+.bookmark-form-actions button:hover {
+  background-color: var(--button-hover-bg);
+}
+
+.bf-save-btn {
+  background-color: var(--link-color) !important;
+  color: #fff !important;
+  border-color: var(--link-color) !important;
+}
+
+.bf-save-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.tag-input-container {
+  position: relative;
+}
+
+.tag-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: var(--bg-color);
+  border: 1px solid var(--input-border);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  max-height: 150px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.tag-suggestion-item {
+  padding: 8px;
+  cursor: pointer;
+}
+
+.tag-suggestion-item:hover {
+  background-color: var(--button-hover-bg);
+}
