@@ -35,98 +35,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- DOM & Rendering ---
 
-    function createTagAutocomplete(input, container) {
-        const suggestionsDiv = document.createElement('div');
-        suggestionsDiv.className = 'tag-suggestions hidden';
-        container.appendChild(suggestionsDiv);
-
-        input.addEventListener('input', () => {
-            const terms = input.value.split(',').map(t => t.trim());
-            const currentTerm = terms[terms.length - 1].toLowerCase();
-
-            if (!currentTerm) {
-                suggestionsDiv.classList.add('hidden');
-                return;
-            }
-
-            const filteredTags = allTags.filter(tag => tag.toLowerCase().startsWith(currentTerm) && !terms.includes(tag));
-            suggestionsDiv.innerHTML = '';
-
-            if (filteredTags.length > 0) {
-                suggestionsDiv.classList.remove('hidden');
-                filteredTags.forEach(tag => {
-                    const item = document.createElement('div');
-                    item.className = 'tag-suggestion-item';
-                    item.textContent = tag;
-                    item.addEventListener('click', () => {
-                        terms[terms.length - 1] = tag;
-                        input.value = terms.join(', ') + ', ';
-                        suggestionsDiv.classList.add('hidden');
-                        input.focus();
-                    });
-                    suggestionsDiv.appendChild(item);
-                });
-            } else {
-                suggestionsDiv.classList.add('hidden');
-            }
-        });
-    }
-
-    function escapeHTML(str) {
-        if (str === null || str === undefined) return '';
-        const p = document.createElement('p');
-        p.textContent = str;
-        return p.innerHTML;
-    }
-
-    function createEditForm(bookmark, li) {
-        const form = document.createElement('form');
-        form.className = 'edit-form';
-        form.innerHTML = `
-            <div><label>Title</label><input name="title" value="${escapeHTML(bookmark.title || bookmark.website_title || '')}"></div>
-            <div><label>URL</label><input name="url" value="${escapeHTML(bookmark.url)}"></div>
-            <div><label>Description</label><textarea name="description" rows="3">${escapeHTML(bookmark.description || '')}</textarea></div>
-            <div class="tag-input-container"><label>Tags (comma-separated)</label><input name="tags" value="${escapeHTML(bookmark.tag_names.join(', '))}, " autocomplete="off"></div>
-            <div class="edit-form-actions">
-                <button type="submit" class="save-btn">Save</button>
-                <button type="button" class="cancel-btn">Cancel</button>
-            </div>
-        `;
-
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(form);
-            const updatedData = {
-                ...bookmark, // Preserve other fields like is_archived
-                url: formData.get('url'),
-                title: formData.get('title'),
-                description: formData.get('description'),
-                tag_names: formData.get('tags').split(',').map(t => t.trim()).filter(Boolean),
-            };
-            try {
-                const updatedBookmark = await linkding.updateBookmark(bookmark.id, updatedData);
-                broadcastBookmarkChange('updated', { bookmarks: [updatedBookmark] });
-
-                const index = allBookmarksFlat.findIndex(b => b.id === bookmark.id);
-                if (index !== -1) allBookmarksFlat[index] = updatedBookmark;
-                allBookmarksByTag = groupBookmarksByTag(allBookmarksFlat);
-                allTags = [...new Set(allBookmarksFlat.flatMap(b => b.tag_names))].sort();
-
-                reRenderUI();
-            } catch (error) {
-                alert(`An error occurred: ${error.message}`);
-            }
-        });
-
-        form.querySelector('.cancel-btn').addEventListener('click', () => {
-            renderBookmarksForTag(currentTag);
-        });
-
-        li.innerHTML = ''; // Clear the list item
-        li.appendChild(form); // And add the form
-        createTagAutocomplete(form.querySelector('input[name="tags"]'), form.querySelector('.tag-input-container'));
-    }
-
     function createContextMenu() {
         if (contextMenu) document.body.removeChild(contextMenu);
 
@@ -138,6 +46,74 @@ document.addEventListener('DOMContentLoaded', () => {
             contextMenu.classList.add('hidden');
         });
     }
+
+    async function openEditInSidePanel(bookmark) {
+        // Make sure only one Manager edit button is disabled at a time.
+        document.querySelectorAll('button[data-editing="true"]').forEach(btn => {
+            btn.disabled = false;
+            btn.dataset.editing = 'false';
+            delete btn.dataset.editingId;
+        });
+
+        // Find the edit button for this bookmark so we can disable it while the form is open.
+        const li = document.querySelector(`li[data-bookmark-id="${bookmark.id}"]`);
+        const editBtn = document.querySelector(`li[data-bookmark-id="${bookmark.id}"] button[title="Edit"]`);
+        if (li) li.draggable = false;
+        if (editBtn) {
+            editBtn.disabled = true;
+            editBtn.dataset.editing = 'true';
+            editBtn.dataset.editingId = String(bookmark.id);
+        }
+
+        try {
+            // Open the side panel in the active tab (must call open while user action is active).
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            if (tab?.id) {
+                try {
+                    await chrome.sidePanel.open({ tabId: tab.id });
+                } catch (err) {
+                    // If sidePanel.open fails we still proceed to set session key so the side panel
+                    // will show the form the next time it is opened.
+                    console.warn('chrome.sidePanel.open failed', err);
+                }
+            }
+
+            // Write a session key that the side panel listens for.
+            await chrome.storage.session.set({
+                activeBookmarkForm: {
+                    source: 'manager',
+                    bookmark,
+                    ts: Date.now(),
+                },
+            });
+        } catch (error) {
+            console.error('Could not open edit form in side panel:', error);
+            // Re-enable draggable and the edit button on error.
+            if (li) li.draggable = true;
+            if (editBtn) {
+                editBtn.disabled = false;
+                editBtn.dataset.editing = 'false';
+                delete editBtn.dataset.editingId;
+            }
+            alert('Could not open side panel to edit bookmark.');
+        }
+    }
+
+    // Add a storage listener so the Manager re-enables any disabled edit buttons
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+        if (namespace !== 'session') return;
+        // If activeBookmarkForm was cleared (removed or set to null), re-enable any items we disabled.
+        if (changes?.activeBookmarkForm && !changes.activeBookmarkForm.newValue) {
+            document.querySelectorAll('li[draggable="false"]').forEach(li => {
+                li.draggable = true;
+            })
+            document.querySelectorAll('button[data-editing="true"]').forEach(btn => {
+                btn.disabled = false;
+                btn.dataset.editing = 'false';
+                delete btn.dataset.editingId;
+            });
+        }
+    });
 
     async function handleAddFolder(parentTag) {
         const isUntagged = parentTag === '[Untagged]';
@@ -329,8 +305,9 @@ document.addEventListener('DOMContentLoaded', () => {
         editBtn.title = 'Edit';
         editBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
         editBtn.addEventListener('click', () => {
+            // Use the shared side-panel form rather than inline edit.
             li.draggable = false;
-            createEditForm(bookmark, li);
+            openEditInSidePanel(bookmark);
         });
 
         const deleteBtn = document.createElement('button');
@@ -353,6 +330,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         li.addEventListener('dragstart', (e) => {
+            if (!li.draggable) {
+                e.preventDefault();
+                return;
+            }
             // We need to pass both the bookmark ID and its original tag
             const payload = { id: bookmark.id, sourceTag: sourceTag };
             e.dataTransfer.setData('application/json', JSON.stringify(payload));

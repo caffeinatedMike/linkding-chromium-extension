@@ -475,52 +475,80 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function openPendingAddFormIfAny() {
         try {
-            const { pendingAddLink } = await chrome.storage.session.get('pendingAddLink');
+            // Read both keys we care about.
+            const { pendingAddLink, activeBookmarkForm } = await chrome.storage.session.get(['pendingAddLink', 'activeBookmarkForm']);
 
-            if (!pendingAddLink) return;
+            // 1) Handle pendingAddLink (context-menu/open-from-background flow).
+            if (pendingAddLink) {
+                // Consume the request so it cannot be opened twice.
+                await chrome.storage.session.remove('pendingAddLink');
 
-            // Consume the request immediately so it cannot be opened twice.
-            await chrome.storage.session.remove('pendingAddLink');
+                if (
+                    !pendingAddLink.ts ||
+                    Date.now() - pendingAddLink.ts > PENDING_ADD_LINK_TTL_MS
+                ) {
+                    // stale
+                } else {
+                    // If the request is for a different tab, ignore it.
+                    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+                    if (tab?.id && tab.id === pendingAddLink.tabId) {
+                        linkding = linkding || await createLinkding();
 
-            if (
-                !pendingAddLink.ts ||
-                Date.now() - pendingAddLink.ts > PENDING_ADD_LINK_TTL_MS
-            ) {
-                return;
+                        BookmarkForm.open({
+                            container: bookmarkFormRoot,
+                            url: pendingAddLink.url,
+                            title: pendingAddLink.title || '',
+                            linkding,
+                            allTags,
+                            onSaved: (bookmark, mode) => {
+                                applySavedBookmark(bookmark);
+                                showAddStatus(
+                                    mode === 'created'
+                                        ? 'Bookmark added successfully!'
+                                        : 'Bookmark updated successfully!'
+                                );
+                            },
+                        });
+                        // Return early because we've opened a form for the pending add.
+                        return;
+                    }
+                }
             }
 
-            // Do not consume a request intended for another tab.
-            const [tab] = await chrome.tabs.query({
-                active: true,
-                currentWindow: true,
-            });
+            // 2) Handle activeBookmarkForm (manager requested an edit in the side panel).
+            if (activeBookmarkForm && activeBookmarkForm.bookmark && activeBookmarkForm.source === 'manager') {
+                // If stale abort
+                if (!activeBookmarkForm.ts || (Date.now() - activeBookmarkForm.ts) > PENDING_ADD_LINK_TTL_MS) {
+                    await chrome.storage.session.remove('activeBookmarkForm');
+                    return;
+                }
 
-            if (!tab?.id || tab.id !== pendingAddLink.tabId) {
-                return;
+                linkding = linkding || await createLinkding();
+
+                // Open the edit form prefilled with the bookmark object.
+                // Provide onSaved and onCancel callbacks that remove the activeBookmarkForm key
+                // so the Manager can re-enable its edit button when the form is finished.
+                const bookmarkToEdit = activeBookmarkForm.bookmark;
+
+                BookmarkForm.open({
+                    container: bookmarkFormRoot,
+                    bookmark: bookmarkToEdit,
+                    linkding,
+                    allTags,
+                    onSaved: (savedBookmark, mode) => {
+                        applySavedBookmark(savedBookmark);
+                        showAddStatus('Bookmark updated successfully!');
+                        // Remove the session key to notify Manager to re-enable the button.
+                        chrome.storage.session.remove('activeBookmarkForm').catch(() => {});
+                    },
+                    onCancel: () => {
+                        // Remove session key so Manager re-enables button.
+                        chrome.storage.session.remove('activeBookmarkForm').catch(() => {});
+                    },
+                });
             }
-
-            linkding = linkding || await createLinkding();
-
-            BookmarkForm.open({
-                container: bookmarkFormRoot,
-                url: pendingAddLink.url,
-                title: pendingAddLink.title || '',
-                linkding,
-                allTags,
-                onSaved: (bookmark, mode) => {
-                    applySavedBookmark(bookmark);
-                    showAddStatus(
-                        mode === 'created'
-                            ? 'Bookmark added successfully!'
-                            : 'Bookmark updated successfully!'
-                    );
-                },
-            });
         } catch (error) {
-            console.warn(
-                'Could not check for a pending add-link request:',
-                error.message
-            );
+            console.warn('Could not check for a pending add/edit request:', error.message);
         }
     }
 
@@ -584,7 +612,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         // A relevant UI setting changed, force a reload of the data and view
                         loadData(true);
                     }
-                } else if (namespace === 'session' && changes?.pendingAddLink?.newValue) {
+                } else if (namespace === 'session' && (changes?.pendingAddLink?.newValue || changes?.activeBookmarkForm?.newValue)) {
                     openPendingAddFormIfAny();
                 }
             }
