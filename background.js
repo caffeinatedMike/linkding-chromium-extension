@@ -12,21 +12,21 @@ chrome.runtime.onInstalled.addListener(() => {
     chrome.contextMenus.create({
         id: 'open-manager',
         title: 'Open Bookmark Manager',
-        contexts: ['action']
+        contexts: ['action'],
     });
 
     // Add a context menu item for bookmarking links
     chrome.contextMenus.create({
         id: 'bookmark-link',
         title: 'Bookmark this link in Linkding',
-        contexts: ['link']
+        contexts: ['link'],
     });
 
-    // Add a context menu item for bookmarking current page
+    // Add a context menu item for bookmarking the current page
     chrome.contextMenus.create({
         id: 'bookmark-page',
         title: 'Bookmark this page in Linkding',
-        contexts: ['page']
+        contexts: ['page'],
     });
 });
 

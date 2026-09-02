@@ -471,21 +471,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function openAddCurrentTabForm() {
         try {
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (!tab || !tab.url || tab.url.startsWith('chrome://') || tab.url.startsWith('brave://') || tab.url.startsWith('edge://')) {
-                showAddStatus('Cannot bookmark special browser pages.', true);
-                return;
-            }
+            const [tab] = await chrome.tabs.query({
+                active: true,
+                currentWindow: true,
+            });
 
-            if (isSidePanelView) {
-                // The side panel has no toolbar popup of its own — hand
-                // off to background so the form opens under the
-                // extension icon instead of showing inline here.
-                await chrome.runtime.sendMessage({
-                    type: 'linkding-open-add-form',
-                    url: tab.url,
-                    title: tab.title,
-                });
+            if (!tab || !tab.url) {
+                showAddStatus('Could not locate active tab with a valid url.', true);
                 return;
             }
 
@@ -497,7 +489,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 allTags,
                 onSaved: (bookmark, mode) => {
                     applySavedBookmark(bookmark);
-                    showAddStatus(mode === 'created' ? 'Bookmark added successfully!' : 'Bookmark updated successfully!');
+                    showAddStatus(
+                        mode === 'created'
+                            ? 'Bookmark added successfully!'
+                            : 'Bookmark updated successfully!'
+                    );
                 },
             });
         } catch (error) {
@@ -513,32 +509,55 @@ document.addEventListener('DOMContentLoaded', () => {
     const PENDING_ADD_LINK_TTL_MS = 5 * 60 * 1000;
 
     async function openPendingAddFormIfAny() {
-        if (isSidePanelView) return;
-
         try {
             const { pendingAddLink } = await chrome.storage.session.get('pendingAddLink');
+
             if (!pendingAddLink) return;
 
+            // Consume the request immediately so it cannot be opened twice.
             await chrome.storage.session.remove('pendingAddLink');
-            if (Date.now() - pendingAddLink.ts > PENDING_ADD_LINK_TTL_MS) return;
+
+            if (
+                !pendingAddLink.ts ||
+                Date.now() - pendingAddLink.ts > PENDING_ADD_LINK_TTL_MS
+            ) {
+                return;
+            }
+
+            // Do not consume a request intended for another tab.
+            const [tab] = await chrome.tabs.query({
+                active: true,
+                currentWindow: true,
+            });
+
+            if (!tab?.id || tab.id !== pendingAddLink.tabId) {
+                return;
+            }
 
             linkding = linkding || await createLinkding();
 
             BookmarkForm.open({
                 container: bookmarkFormRoot,
                 url: pendingAddLink.url,
-                title: pendingAddLink.title,
+                title: pendingAddLink.title || '',
                 linkding,
                 allTags,
                 onSaved: (bookmark, mode) => {
                     applySavedBookmark(bookmark);
-                    showAddStatus(mode === 'created' ? 'Bookmark added successfully!' : 'Bookmark updated successfully!');
+                    showAddStatus(
+                        mode === 'created'
+                            ? 'Bookmark added successfully!'
+                            : 'Bookmark updated successfully!'
+                    );
                 },
             });
         } catch (error) {
-            console.warn('Could not check for a pending add-link request:', error.message);
-         }
-     }
+            console.warn(
+                'Could not check for a pending add-link request:',
+                error.message
+            );
+        }
+    }
 
     // Data Loading
 
@@ -592,15 +611,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         chrome.storage.onChanged.addListener(
             (changes, namespace) => {
-                if (namespace !== 'sync') return;
-
-                const uiKeys = ['showTags', 'showActions', 'sidePanelShowTags', 'sidePanelShowActions'];
-                const changedKeys = Object.keys(changes);
-                const hasUiChange = changedKeys.some(key => uiKeys.includes(key));
-
-                if (hasUiChange) {
-                    // A relevant UI setting changed, force a reload of the data and view
-                    loadData(true);
+                if (namespace === 'sync'){
+                    const uiKeys = ['showTags', 'showActions'];
+                    const changedKeys = Object.keys(changes);
+                    const hasUiChange = changedKeys.some(key => uiKeys.includes(key));
+                    if (hasUiChange) {
+                        // A relevant UI setting changed, force a reload of the data and view
+                        loadData(true);
+                    }
+                } else if (namespace === 'session' && changes?.pendingAddLink?.newValue) {
+                    openPendingAddFormIfAny();
                 }
             }
         );
@@ -624,8 +644,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        await openPendingAddFormIfAny();
         await loadData(false);
+        await openPendingAddFormIfAny();
     }
 
     init();
