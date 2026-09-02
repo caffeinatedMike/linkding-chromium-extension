@@ -13,6 +13,7 @@
  *     side panel and passes the pending bookmark request to it.
  */
 const BookmarkForm = (() => {
+    let activeForm = null;
     function buildDialog() {
         const overlay = document.createElement('div');
         overlay.className = 'bookmark-form-overlay';
@@ -131,6 +132,11 @@ const BookmarkForm = (() => {
             onCancel = () => {},
         } = opts;
 
+        // Only one add/edit form may be open at a time.
+        if (activeForm) {
+            activeForm.close();
+        }
+
         const overlay = buildDialog();
         container.appendChild(overlay);
 
@@ -150,11 +156,17 @@ const BookmarkForm = (() => {
 
         let existingBookmark = null;
         let closed = false;
+        let formInstance = null;
 
         function close() {
             if (closed) return;
             closed = true;
+
             overlay.remove();
+
+            if (activeForm === formInstance) {
+                activeForm = null;
+            }
         }
 
         function handleCancel() {
@@ -283,7 +295,10 @@ const BookmarkForm = (() => {
         titleInput.focus();
         checkExisting();
 
-        return { close };
+        formInstance = { close };
+        activeForm = formInstance;
+
+        return formInstance;
     }
 
     return { open };
