@@ -124,6 +124,7 @@ const BookmarkForm = (() => {
     function open(opts) {
         const {
             container = document.body,
+            bookmark = null,
             url = '',
             title = '',
             linkding,
@@ -290,10 +291,16 @@ const BookmarkForm = (() => {
 
         attachTagAutocomplete(tagsInput, overlay.querySelector('.tag-input-container'), allTags);
 
-        urlInput.value = url;
-        titleInput.value = title || '';
+        urlInput.value = bookmark?.url || url;
+        titleInput.value = bookmark?.title || bookmark?.website_title || title || '';
+
+        if (bookmark) {
+            applyExistingBookmark(bookmark);
+        } else {
+            checkExisting();
+        }
+
         titleInput.focus();
-        checkExisting();
 
         formInstance = { close };
         activeForm = formInstance;

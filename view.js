@@ -76,55 +76,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function createEditForm(bookmark, li, sourceTag) {
-        const form = document.createElement('form');
-        form.className = 'edit-form';
-        form.innerHTML = `
-            <div><label>Title</label><input name="title" value="${escapeHTML(bookmark.title || bookmark.website_title || '')}"></div>
-            <div><label>URL</label><input name="url" value="${escapeHTML(bookmark.url)}"></div>
-            <div><label>Description</label><textarea name="description" rows="3">${escapeHTML(bookmark.description || '')}</textarea></div>
-            <div class="tag-input-container"><label>Tags (comma-separated)</label><input name="tags" value="${escapeHTML(bookmark.tag_names.join(', '))}, " autocomplete="off"></div>
-            <div class="edit-form-actions">
-                <button type="submit" class="save-btn">Save</button>
-                <button type="button" class="cancel-btn">Cancel</button>
-            </div>
-        `;
-
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(form);
-            const updatedData = {
-                ...bookmark,
-                url: formData.get('url'),
-                title: formData.get('title'),
-                description: formData.get('description'),
-                tag_names: formData.get('tags').split(',').map(t => t.trim()).filter(Boolean),
-            };
-
-            try {
-                const updatedBookmark = await linkding.updateBookmark(bookmark.id, updatedData);
-                const index = allBookmarksFlat.findIndex(b => b.id === bookmark.id);
-                if (index !== -1) allBookmarksFlat[index] = updatedBookmark;
-                reRenderUI();
-            } catch (error) {
-                alert(`An error occurred: ${error.message}`);
-            }
-        });
-
-        form.querySelector('.cancel-btn').addEventListener('click', () => {
-            const newLi = createBookmarkElement(bookmark, sourceTag);
-            li.parentNode.replaceChild(newLi, li);
-        });
-
-        li.innerHTML = '';
-        li.draggable = false;
-        li.appendChild(form);
-        createTagAutocomplete(
-            form.querySelector('input[name="tags"]'),
-            form.querySelector('.tag-input-container')
-        );
-    }
-
     function createBookmarkElement(bookmark, sourceTag) {
         const li = document.createElement('li');
         li.dataset.bookmarkId = bookmark.id;
@@ -204,7 +155,21 @@ document.addEventListener('DOMContentLoaded', () => {
             editBtn.title = 'Edit';
             editBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
             editBtn.addEventListener('click', () => {
-                createEditForm(bookmark, li, sourceTag);
+                editBtn.disabled = true;
+
+                BookmarkForm.open({
+                    container: bookmarkFormRoot,
+                    bookmark,
+                    linkding,
+                    allTags,
+                    onSaved: (updatedBookmark) => {
+                        applySavedBookmark(updatedBookmark);
+                        showAddStatus('Bookmark updated successfully!');
+                    },
+                    onClosed: () => {
+                        editBtn.disabled = false;
+                    },
+                });
             });
 
             const deleteBtn = document.createElement('button');
