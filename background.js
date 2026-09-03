@@ -169,8 +169,11 @@ async function captureFullPageScreenshot(tabId) {
         const yStep = viewportHeight - overlap;
         const positions = [];
 
-        for (let y = Math.max(0, height - viewportHeight); y >= 0; y -= yStep) {
-            positions.push(Math.max(0, y));
+        // Always land on y=0 exactly, even if it doesn't fall on a yStep
+        // boundary — the top-of-page capture is what "wins" the sticky
+        // header fix below, so it must actually be taken.
+        for (let y = Math.max(0, height - viewportHeight); ; y = Math.max(0, y - yStep)) {
+            positions.push(y);
 
             if (y === 0) break;
         }
@@ -213,7 +216,15 @@ async function captureFullPageScreenshot(tabId) {
             throw new Error("Unable to create screenshot canvas.");
         }
 
-        for (const { data, y } of images) {
+        // Draw bottom-to-top (reverse of capture order). Every viewport
+        // capture carries its own copy of any sticky/fixed header pinned
+        // to the top of that screenshot. Consecutive captures overlap by
+        // `overlap` px specifically so that, drawing in this order, each
+        // higher-up (and therefore later-drawn) image paints over the
+        // duplicated header left behind by the capture below it. The
+        // y=0 capture is drawn dead last, so the real header — in its
+        // one true position — is what's left on top.
+        for (const { data, y } of [...images].reverse()) {
             const image = await createImageBitmap(
                 await (await fetch(data)).blob()
             );
