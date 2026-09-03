@@ -6,6 +6,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const addTabBtn = document.getElementById('add-tab-btn');
     const refreshBtn = document.getElementById('refresh-btn');
     const addStatus = document.getElementById('add-status');
+    const addStatusMessage = document.getElementById('add-status-message');
+    const addStatusDismiss = document.getElementById('add-status-dismiss');
     const openManagerBtn = document.getElementById('open-manager-btn');
 
     let allBookmarksFlat = [];
@@ -412,12 +414,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function showAddStatus(message, isError = false) {
-        addStatus.textContent = message;
-        addStatus.className = isError ? 'error' : 'success';
+        isError ? addStatus.classList.add('error') : addStatus.classList.remove('error');
+        addStatusMessage.textContent = message;
         addStatus.classList.remove('hidden');
-        setTimeout(() => {
-            addStatus.classList.add('hidden');
-        }, 3000);
+        if (isError) {
+            addStatusDismiss.addEventListener('click', () => {
+                addStatus.classList.add('hidden');
+            });
+        } else {
+            setTimeout(() => {
+                addStatus.classList.add('hidden');
+            }, 3000);
+        }
+
     }
 
     // Bookmark Operations
