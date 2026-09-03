@@ -5,16 +5,19 @@
   "author": "@caffeinatedMike on GitHub",
   "description": "A dropdown for your Linkding bookmarks, sorted by tags.",
   "permissions": [
-    "storage",
     "tabs",
+    "activeTab",
+    "storage",
     "bookmarks",
     "sidePanel",
     "contextMenus",
-    "notifications"
+    "notifications",
+    "debugger"
   ],
   "host_permissions": [
     "http://*/",
-    "https://*/"
+    "https://*/",
+    "<all_urls>"
   ],
   "action": {
     "default_icon": {

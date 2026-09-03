@@ -50,6 +50,12 @@ const BookmarkForm = (() => {
                             <span>Mark as unread</span>
                         </label>
                     </div>
+                    <div class="bookmark-form-field bookmark-form-checkbox">
+                        <label>
+                            <input type="checkbox" id="bf-screenshot" name="screenshot">
+                            <span title="Capture a full-page screenshot and attach it as an asset to the bookmark.">Save screenshot</span>
+                        </label>
+                    </div>
                     <div id="bf-error" class="bookmark-form-error hidden"></div>
                     <div class="bookmark-form-actions">
                         <button type="button" class="bf-cancel-btn">Cancel</button>
@@ -108,6 +114,123 @@ const BookmarkForm = (() => {
         });
     }
 
+    function buildScreenshotApprovalDialog(dataUrl) {
+        const overlay = document.createElement('div');
+        overlay.className = 'bookmark-form-overlay screenshot-approval-overlay';
+        overlay.innerHTML = `
+            <div class="bookmark-form-dialog screenshot-approval-dialog" role="dialog" aria-modal="true" aria-labelledby="screenshot-approval-heading">
+                <div class="bookmark-form-header">
+                    <h2 id="screenshot-approval-heading">Save Screenshot?</h2>
+                    <button type="button" class="bookmark-form-close screenshot-cancel-btn" title="Don't save screenshot" aria-label="Don't save screenshot">&times;</button>
+                </div>
+                <div class="screenshot-approval-content">
+                    <p>Review the full-page screenshot before attaching it to the bookmark.</p>
+                    <div class="screenshot-preview-container">
+                        <img class="screenshot-preview" src="${dataUrl}" alt="Full-page screenshot preview">
+                    </div>
+                </div>
+                <div class="bookmark-form-actions">
+                    <button type="button" class="bf-cancel-btn screenshot-cancel-btn">Don't Save</button>
+                    <button type="button" class="bf-save-btn screenshot-approve-btn">Save Screenshot</button>
+                </div>
+            </div>
+        `;
+        return overlay;
+    }
+
+    /**
+     * Capture a screenshot from a tab through the background service worker.
+     */
+    function captureScreenshot(tabId) {
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage(
+                { type: 'capture-full-page-screenshot', tabId },
+                (response) => {
+                    if (chrome.runtime.lastError) {
+                        reject(new Error(chrome.runtime.lastError.message));
+                        return;
+                    }
+
+                    if (!response?.success) {
+                        reject(new Error(response?.error || 'Screenshot capture failed.'));
+                        return;
+                    }
+
+                    resolve(response.dataUrl);
+                }
+            );
+        });
+    }
+
+    /**
+     * Convert a data URL containing the PNG screenshot into a File.
+     */
+    function dataUrlToFile(dataUrl, filename = 'screenshot.png') {
+        const [header, base64] = dataUrl.split(',');
+
+        if (!header || !base64) {
+            throw new Error('Invalid screenshot data.');
+        }
+
+        const mimeMatch = header.match(/data:([^;]+);base64/);
+        const mimeType = mimeMatch?.[1] || 'image/png';
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+
+        return new File([bytes], filename, { type: mimeType });
+    }
+
+    /**
+     * Show the screenshot approval dialog.
+     *
+     * Resolves true when approved and false when rejected.
+     */
+    function requestScreenshotApproval(dataUrl, container = document.body) {
+        return new Promise((resolve) => {
+            const overlay = buildScreenshotApprovalDialog(dataUrl);
+            container.appendChild(overlay);
+
+            let resolved = false;
+
+            function finish(approved) {
+                if (resolved) return;
+                resolved = true;
+
+                overlay.remove();
+                resolve(approved);
+            }
+
+            overlay.querySelectorAll('.screenshot-cancel-btn').forEach(button => {
+                button.addEventListener('click', () => {
+                    finish(false);
+                });
+            });
+
+            overlay.querySelector('.screenshot-approve-btn').addEventListener('click', () => {
+                finish(true);
+            });
+
+            overlay.addEventListener('click', (event) => {
+                if (event.target === overlay) {
+                    finish(false);
+                }
+            });
+
+            const escListener = (event) => {
+                if (event.key !== 'Escape') return;
+                document.removeEventListener('keydown', escListener);
+                finish(false);
+            };
+
+            document.addEventListener('keydown', escListener);
+        });
+    }
+
+
     /**
      * Opens the form.
      *
@@ -129,6 +252,7 @@ const BookmarkForm = (() => {
             title = '',
             linkding,
             allTags = [],
+            tabId = null,
             onSaved = () => {},
             onCancel = () => {},
         } = opts;
@@ -150,6 +274,7 @@ const BookmarkForm = (() => {
         const descInput = overlay.querySelector('#bf-description');
         const tagsInput = overlay.querySelector('#bf-tags');
         const unreadInput = overlay.querySelector('#bf-unread');
+        const screenshotInput = overlay.querySelector('#bf-screenshot');
         const errorBox = overlay.querySelector('#bf-error');
         const saveBtn = overlay.querySelector('.bf-save-btn');
         const closeBtn = overlay.querySelector('.bookmark-form-close');
@@ -213,6 +338,12 @@ const BookmarkForm = (() => {
             descInput.value = bookmark.description || '';
             tagsInput.value = (bookmark.tag_names || []).join(', ');
             unreadInput.checked = !!bookmark.unread;
+            /*
+             * Screenshot is an action for this save operation, not a
+             * persisted bookmark property. Therefore it intentionally
+             * starts unchecked when editing an existing bookmark.
+             */
+            screenshotInput.checked = false;
         }
 
         function applyNewBookmarkMetadata(metadata, autoTags) {
@@ -233,10 +364,10 @@ const BookmarkForm = (() => {
             try {
                 const result = await linkding.checkBookmark(url);
                 if (closed) return;
-                if (result && result.bookmark) {
+                if (result?.bookmark) {
                     applyExistingBookmark(result.bookmark);
                 } else {
-                    applyNewBookmarkMetadata(result && result.metadata, result && result.auto_tags);
+                    applyNewBookmarkMetadata(result?.metadata, result?.auto_tags);
                 }
             } catch (error) {
                 // Older Linkding instances, or a misconfigured connection, may not
@@ -246,6 +377,11 @@ const BookmarkForm = (() => {
                 urlSpinner.classList.add('hidden');
                 saveBtn.disabled = false;
             }
+        }
+
+        async function saveScreenshot(savedBookmark, screenshotDataUrl) {
+            const screenshotFile = dataUrlToFile(screenshotDataUrl, 'screenshot.png');
+            return linkding.uploadBookmarkAsset(savedBookmark.id, screenshotFile, 'screenshot.png');
         }
 
         form.addEventListener('submit', async (e) => {
@@ -265,11 +401,20 @@ const BookmarkForm = (() => {
                 return;
             }
 
+            if (screenshotInput.checked && !tabId) {
+                showError('A screenshot cannot be captured because the source tab is unavailable.');
+                return;
+            }
+
             saveBtn.disabled = true;
             saveBtn.textContent = 'Saving\u2026';
 
             try {
                 const mode = existingBookmark ? 'updated' : 'created';
+                /*
+                 * Save the bookmark first. The screenshot is an
+                 * optional asset attached to the saved bookmark.
+                 */
                 const savedBookmark = existingBookmark
                     ? await linkding.updateBookmark(existingBookmark.id, { ...existingBookmark, ...data })
                     : await linkding.createBookmark(data);
@@ -282,6 +427,36 @@ const BookmarkForm = (() => {
 
                 close();
                 onSaved(savedBookmark, mode);
+
+                if (!screenshotInput.checked) return;
+
+                // Capture the screenshot after the bookmark has been saved.
+                let screenshotDataUrl;
+
+                try {
+                    screenshotDataUrl = await captureScreenshot(tabId);
+                } catch (error) {
+                    showScreenshotError(`The bookmark was saved, but the screenshot could not be captured: ${error.message}`);
+                    return;
+                }
+
+                /*
+                 * Give the user an opportunity to inspect the
+                 * screenshot before uploading it.
+                 */
+                const approved = await requestScreenshotApproval(screenshotDataUrl, container);
+
+                if (!approved) {
+                    showScreenshotStatus('Bookmark saved. Screenshot was not attached.');
+                    return;
+                }
+
+                try {
+                    await saveScreenshot(savedBookmark, screenshotDataUrl);
+                    showScreenshotStatus('Bookmark saved and screenshot attached.');
+                } catch (error) {
+                    showScreenshotError(`The bookmark was saved, but the screenshot could not be uploaded: ${error.message}`);
+                }
             } catch (error) {
                 showError(`Could not save bookmark: ${error.message}`);
                 saveBtn.disabled = false;
@@ -306,6 +481,55 @@ const BookmarkForm = (() => {
         activeForm = formInstance;
 
         return formInstance;
+    }
+
+    /*
+     * These two helpers deliberately use the existing global status
+     * mechanism where available. They also fall back to alert() so
+     * bookmark-form.js remains usable by manager.html.
+     */
+    function showScreenshotStatus(message) {
+        if (typeof window.showAddStatus === 'function') {
+            window.showAddStatus(message);
+            return;
+        }
+
+        const status = document.getElementById('add-status');
+        const statusMessage = document.getElementById('add-status-message');
+
+        if (status) {
+            status.classList.remove('error');
+            statusMessage.textContent = message;
+            status.classList.remove('hidden');
+            setTimeout(() => { status.classList.add('hidden'); }, 4000);
+            return;
+        }
+
+        console.info(message);
+    }
+
+    function showScreenshotError(message) {
+        if (typeof window.showAddStatus === 'function') {
+            window.showAddStatus(message, true);
+            return;
+        }
+
+        const status = document.getElementById('add-status');
+        const statusMessage = document.getElementById('add-status-message');
+        const statusDismiss = document.getElementById('add-status-dismiss');
+
+        if (status) {
+            statusDismiss.addEventListener('click', () => {
+                status.classList.add('hidden');
+            });
+
+            status.classList.add('error');
+            statusMessage.textContent = message;
+            status.classList.remove('hidden');
+            return;
+        }
+
+        console.error(message);
     }
 
     return { open };

@@ -459,6 +459,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 container: bookmarkFormRoot,
                 url: tab.url,
                 title: tab.title,
+                tabId: tab.id,
                 linkding,
                 allTags,
                 onSaved: (bookmark, mode) => {
@@ -507,6 +508,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             container: bookmarkFormRoot,
                             url: pendingAddLink.url,
                             title: pendingAddLink.title || '',
+                            tabId: pendingAddLink.tabId,
                             linkding,
                             allTags,
                             onSaved: (bookmark, mode) => {

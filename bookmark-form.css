@@ -134,6 +134,41 @@
   position: relative;
 }
 
+.screenshot-approval-dialog {
+    width: min(900px, calc(100vw - 24px));
+    height: min(90vh, 900px);
+    max-width: none;
+    max-height: none;
+}
+
+.screenshot-approval-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+}
+
+.screenshot-approval-content > p {
+    margin: 0;
+}
+
+.screenshot-preview-container {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    overflow: auto;
+    border: 1px solid var(--border-color, #ccc);
+    border-radius: 4px;
+    background: #f5f5f5;
+    padding: 8px;
+}
+
+.screenshot-preview {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
 .bf-spinner {
   position: absolute;
   right: 8px;
