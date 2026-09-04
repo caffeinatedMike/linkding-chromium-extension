@@ -11,9 +11,14 @@
   --link-color: #0056b3;
   --link-hover-bg: #e0e0e0;
   --icon-fill: #333;
-  --danger-color: #d9534f;
   --danger-hover-bg: #c9302c;
+  --danger-color: #d9534f;
   --drag-over-bg: #d9edf7;
+  --status-bg: #d4edda;
+  --status-color: #155724;
+  --status-border: #c3e6cb;
+  --status-error-bg: #f8d7da;
+  --status-error-color: #721c24;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -29,9 +34,14 @@
     --link-color: #8ab4f8;
     --link-hover-bg: #444;
     --icon-fill: #ddd;
-    --danger-color: #f5b9c0;
     --danger-hover-bg: #e88;
+    --danger-color: #f5b9c0;
     --drag-over-bg: #30384d;
+    --status-bg: #2e4c37;
+    --status-color: #a7d7b8;
+    --status-border: #3a5e45;
+    --status-error-bg: #5c2b2f;
+    --status-error-color: #f5b9c0;
   }
 }
 
@@ -186,11 +196,37 @@ html, body {
   overflow-y: auto;
 }
 
-#loading-message, #error-message, .empty-state {
+#loading-message, .empty-state {
   text-align: center;
   padding: 40px;
   color: var(--text-color);
   font-size: 1.2em;
+}
+
+#status-banner {
+  padding: 8px 32px 8px 8px;
+  margin: -20px -20px 10px -20px;
+  position: relative;
+  text-align: center;
+  font-size: 0.9em;
+  background-color: var(--status-error-bg);
+  color: var(--status-error-color);
+  border-bottom: 1px solid var(--status-border);
+}
+
+#status-dismiss {
+  display: block;
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  border: 0;
+  padding: 2px 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 1.2em;
+  line-height: 1;
+  cursor: pointer;
 }
 
 /* --- Bookmark List Styles (in right pane) --- */

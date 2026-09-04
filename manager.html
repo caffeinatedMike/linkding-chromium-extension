@@ -19,9 +19,15 @@
       <div id="folder-list-container"></div>
     </nav>
     <main id="content-pane">
-        <p id="loading-message">Loading bookmarks...</p>
-        <p id="error-message" class="hidden"></p>
-        <div id="bookmarks-list" class="hidden"></div>
+      <div id="status-banner" class="hidden">
+        <span id="status-message"></span>
+        <button type="button" id="status-dismiss" aria-label="Dismiss error">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16"><path d="M3 3l10 10M13 3L3 13" fill="none" stroke="currentColor" stroke-width="1.5"></path></svg>
+        </button>
+      </div>
+      <p id="loading-message">Loading bookmarks...</p>
+      <p id="error-message" class="hidden"></p>
+      <div id="bookmarks-list" class="hidden"></div>
     </main>
   </div>
   <script src="api.js"></script>

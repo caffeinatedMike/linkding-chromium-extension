@@ -5,6 +5,15 @@
  * and the Manifest V3 background service worker.
  */
 
+class LinkdingConnectionError extends Error {
+    constructor(url, cause) {
+        super('Unable to connect to Linkding.', { cause });
+
+        this.name = 'LinkdingConnectionError';
+        this.url = url;
+    }
+}
+
 class LinkdingApiError extends Error {
     constructor(status, statusText, body, url) {
         super(
@@ -68,10 +77,16 @@ class LinkdingApi {
             headers['Content-Type'] = 'application/json';
         }
 
-        const response = await fetch(url, {
-            ...options,
-            headers,
-        });
+        let response;
+
+        try {
+            response = await fetch(url, {
+                ...options,
+                headers,
+            });
+        } catch (error) {
+            throw new LinkdingConnectionError(url, error);
+        }
 
         if (!response.ok) {
             const body = await response.text();

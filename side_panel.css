@@ -107,7 +107,11 @@ body {
   background-color: var(--button-hover-bg);
 }
 
-#add-status {
+#error-message a {
+  color: var(--link-color);
+}
+
+#status-banner {
   padding: 8px;
   text-align: center;
   font-size: 0.9em;
@@ -116,18 +120,18 @@ body {
   border-bottom: 1px solid var(--status-border);
 }
 
-#add-status.error {
+#status-banner.error {
   position: relative;
   padding-right: 32px;
   background-color: var(--status-error-bg);
   color: var(--status-error-color);
 }
 
-#add-status-dismiss {
+#status-dismiss {
   display: none;
 }
 
-#add-status.error #add-status-dismiss {
+#status-banner.error #status-dismiss {
   display: block;
   position: absolute;
   top: 50%;

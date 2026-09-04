@@ -5,9 +5,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchBox = document.getElementById('search-box');
     const addTabBtn = document.getElementById('add-tab-btn');
     const refreshBtn = document.getElementById('refresh-btn');
-    const addStatus = document.getElementById('add-status');
-    const addStatusMessage = document.getElementById('add-status-message');
-    const addStatusDismiss = document.getElementById('add-status-dismiss');
+    const statusBanner = document.getElementById('status-banner');
+    const statusMessage = document.getElementById('status-message');
+    const statusDismiss = document.getElementById('status-dismiss');
     const openManagerBtn = document.getElementById('open-manager-btn');
 
     let allBookmarksFlat = [];
@@ -30,6 +30,22 @@ document.addEventListener('DOMContentLoaded', () => {
             errorMessage.textContent = message;
         }
         errorMessage.classList.remove('hidden');
+    }
+
+    function showStatusBanner(message, isError = false) {
+        isError ? statusBanner.classList.add('error') : statusBanner.classList.remove('error');
+        statusMessage.textContent = message;
+        statusBanner.classList.remove('hidden');
+        if (isError) {
+            statusDismiss.addEventListener('click', () => {
+                statusBanner.classList.add('hidden');
+            });
+        } else {
+            setTimeout(() => {
+                statusBanner.classList.add('hidden');
+            }, 3000);
+        }
+
     }
 
     // --- DOM & Rendering ---
@@ -134,7 +150,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                 if (index !== -1) allBookmarksFlat[index] = updatedBookmark;
                                 reRenderUI();
                             } catch (error) {
-                                alert(`An error occurred: ${error.message}`);
+                                if (error instanceof LinkdingConnectionError) {
+                                    showStatusBanner('Unable to connect to Linkding.', true);
+                                } else {
+                                    showStatusBanner(`An error occurred: ${error.message}`, true)
+                                }
                             }
                         });
                         tagItem.appendChild(removeBtn);
@@ -166,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     allTags,
                     onSaved: (updatedBookmark) => {
                         applySavedBookmark(updatedBookmark);
-                        showAddStatus('Bookmark updated successfully!');
+                        showStatusBanner('Bookmark updated successfully!');
                     },
                     onClosed: () => {
                         editBtn.disabled = false;
@@ -185,7 +205,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         allBookmarksFlat = allBookmarksFlat.filter(b => b.id !== bookmark.id);
                         reRenderUI();
                     } catch (error) {
-                        alert(`An error occurred: ${error.message}`);
+                        if (error instanceof LinkdingConnectionError) {
+                            showStatusBanner('Unable to connect to Linkding.', true);
+                        } else {
+                            showStatusBanner(`An error occurred: ${error.message}`, true)
+                        }
                     }
                 }
             });
@@ -298,7 +322,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (index !== -1) allBookmarksFlat[index] = updatedBookmark;
                         reRenderUI();
                     } catch (error) {
-                        alert(`An error occurred: ${error.message}`);
+                        //alert(`An error occurred: ${error.message}`);
+                        if (error instanceof LinkdingConnectionError) {
+                            showStatusBanner('Unable to connect to Linkding.', true);
+                        } else {
+                            showStatusBanner(`An error occurred: ${error.message}`, true)
+                        }
                     }
                 });
             }
@@ -413,22 +442,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function showAddStatus(message, isError = false) {
-        isError ? addStatus.classList.add('error') : addStatus.classList.remove('error');
-        addStatusMessage.textContent = message;
-        addStatus.classList.remove('hidden');
-        if (isError) {
-            addStatusDismiss.addEventListener('click', () => {
-                addStatus.classList.add('hidden');
-            });
-        } else {
-            setTimeout(() => {
-                addStatus.classList.add('hidden');
-            }, 3000);
-        }
-
-    }
-
     // Bookmark Operations
 
     const bookmarkFormRoot = document.getElementById('bookmark-form-root');
@@ -451,7 +464,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (!tab || !tab.url) {
-                showAddStatus('Could not locate active tab with a valid url.', true);
+                showStatusBanner('Could not locate active tab with a valid url.', true);
                 return;
             }
 
@@ -464,7 +477,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 allTags,
                 onSaved: (bookmark, mode) => {
                     applySavedBookmark(bookmark);
-                    showAddStatus(
+                    showStatusBanner(
                         mode === 'created'
                             ? 'Bookmark added successfully!'
                             : 'Bookmark updated successfully!'
@@ -472,7 +485,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
             });
         } catch (error) {
-            showAddStatus(`Error: ${error.message}`, true);
+            if (error instanceof LinkdingConnectionError) {
+                showStatusBanner('Unable to connect to Linkding.', true);
+            } else {
+                showStatusBanner(`An error occurred: ${error.message}`, true)
+            }
         }
     }
 
@@ -513,7 +530,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             allTags,
                             onSaved: (bookmark, mode) => {
                                 applySavedBookmark(bookmark);
-                                showAddStatus(
+                                showStatusBanner(
                                     mode === 'created'
                                         ? 'Bookmark added successfully!'
                                         : 'Bookmark updated successfully!'
@@ -548,7 +565,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     allTags,
                     onSaved: (savedBookmark, mode) => {
                         applySavedBookmark(savedBookmark);
-                        showAddStatus('Bookmark updated successfully!');
+                        showStatusBanner('Bookmark updated successfully!');
                         // Remove the session key to notify Manager to re-enable the button.
                         chrome.storage.session.remove('activeBookmarkForm').catch(() => {});
                     },
@@ -568,6 +585,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadData(isForcedRefresh = false) {
         loadingMessage.classList.remove('hidden');
         bookmarksList.innerHTML = '';
+        statusBanner.classList.add('hidden');
         errorMessage.classList.add('hidden');
         if (isForcedRefresh) {
             refreshBtn.disabled = true;
@@ -583,19 +601,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 showActions: settings.showActions,
             };
             linkding = linkding || await createLinkding();
-            allBookmarksFlat = await linkding.getBookmarks({ forceRefresh: isForcedRefresh });
+            const result = await linkding.getBookmarksWithStatus({
+                forceRefresh: isForcedRefresh,
+            });
+            allBookmarksFlat = result.data;
             reRenderUI();
+
+            if (result.stale && result.error instanceof LinkdingConnectionError) {
+                showStatusBanner(
+                    'Unable to connect to Linkding. Showing cached bookmarks.',
+                    true
+                );
+            }
         } catch (error) {
             console.error('Error fetching bookmarks:', error);
-            const isConfigurationError =
-                error.message.includes('Linkding URL') ||
-                error.message.includes('API token') ||
-                error.message.includes('API Token');
-
-            showError(
-                `Failed to load bookmarks. Error: ${error.message}`,
-                isConfigurationError
-            );
+            if (error instanceof LinkdingConnectionError) {
+                showStatusBanner('Unable to connect to Linkding.', true);
+            } else {
+                const isConfigurationError =
+                    error.message.includes('Linkding URL') ||
+                    error.message.includes('API token') ||
+                    error.message.includes('API Token');
+                showError(
+                    `Failed to load bookmarks. Error: ${error.message}`,
+                    isConfigurationError
+                );
+            }
         } finally {
             loadingMessage.classList.add('hidden');
             if (isForcedRefresh) {

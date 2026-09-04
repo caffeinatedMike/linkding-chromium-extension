@@ -19,6 +19,38 @@ class Linkding {
         return this.bookmarkCache.getAll(this.api);
     }
 
+    async getBookmarksWithStatus({forceRefresh = false} = {}) {
+        const cached = await this.bookmarkCache.get();
+
+        if (!forceRefresh && this.bookmarkCache.isFresh(cached)) {
+            return {
+                data: cached.data,
+                stale: false,
+            };
+        }
+
+        try {
+            return {
+                data: await this.bookmarkCache.refresh(this.api),
+                stale: false,
+            };
+        } catch (error) {
+            if (!(error instanceof LinkdingConnectionError)) {
+                throw error;
+            }
+
+            if (cached) {
+                return {
+                    data: cached.data,
+                    stale: true,
+                    error,
+                };
+            }
+
+            throw error;
+        }
+    }
+
     getBookmark(id) {
         return this.api.getBookmark(id);
     }
